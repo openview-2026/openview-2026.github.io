@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenView: Empowering MLLMs with Out-of-view VQA</title>
+<meta name="description" content="OpenView synthesizes out-of-view VQA data from panoramic imagery to empower MLLMs with reasoning beyond the visible frame.">
+<style>
+  :root{
+    --ink:#161c26; --sub:#5d6674; --line:#e4e8ef; --bg:#ffffff; --soft:#f5f7fb;
+    --accent:#c0392b;     /* contextual questions (red, as in the paper figures) */
+    --accent2:#2e6fb7;    /* directional questions (blue) */
+    --good:#1e8e4c;       /* correct answers / gains */
+    --radius:14px;
+    --serif:"Charter","Georgia",serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth;scroll-padding-top:70px;color-scheme:light}
+  body{font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.65;font-size:16.5px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  .wrap.narrow{max-width:820px}
+  section{padding:52px 0}
+  h1{font-family:var(--serif);font-size:clamp(1.45rem,5.6vw,2.75rem);line-height:1.18;text-align:center;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+  h2{font-family:var(--serif);font-size:1.62rem;margin-bottom:6px;text-align:center;letter-spacing:-.01em}
+  h3{font-size:1.04rem;margin-bottom:7px}
+  h3.sec{text-align:center;font-family:var(--serif);font-size:1.15rem;margin:38px 0 4px}
+  p{margin-bottom:12px}
+  a{color:var(--accent2)}
+  .sub{color:var(--sub)}
+  .lead{color:var(--sub);text-align:center;max-width:720px;margin:0 auto 26px;font-size:1rem}
+  .lead.wide{max-width:940px;text-wrap:balance}
+  img{max-width:100%;display:block}
+  .center{text-align:center}
+  .figcap{font-size:.88rem;color:var(--sub);margin-top:10px;text-align:center;max-width:870px;margin-left:auto;margin-right:auto;text-wrap:balance}
+  .altband{background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .kicker{text-align:center;font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);margin-bottom:10px;font-weight:600}
+  .shot{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 6px 22px rgba(22,28,38,.07)}
+
+  /* ---- nav ---- */
+  nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  nav .inner{max-width:1000px;margin:0 auto;padding:7px 22px;display:flex;flex-wrap:wrap;
+             align-items:center;justify-content:center;gap:6px 20px;min-height:50px}
+  nav .brand{font-family:var(--serif);font-weight:700;letter-spacing:.01em;margin-right:auto;color:var(--ink);text-decoration:none;font-size:1rem}
+  nav a{color:var(--sub);text-decoration:none;font-size:.88rem;white-space:nowrap}
+  nav a:hover{color:var(--ink)}
+  @media(max-width:700px){
+    nav .inner{padding:6px 12px;gap:4px 14px;min-height:46px}
+    nav .brand{margin-right:0;flex-basis:100%;text-align:center;font-size:.95rem}
+    nav a{font-size:.8rem}
+  }
+  @media(max-width:360px){nav .brand{display:none}}
+
+  /* ---- hero ---- */
+  header{padding:54px 0 30px;background:
+      radial-gradient(900px 300px at 50% -60px, #edf3fb 0%, rgba(255,255,255,0) 70%),
+      linear-gradient(#fcfdff,#fff)}
+  .eyebrow{text-align:center;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent2);font-weight:700;margin-bottom:12px}
+  h1 .nm{color:var(--accent2)}
+  @media(max-width:720px){br.wide{display:none}}
+  .authors{margin-top:26px;text-align:center}
+  .authors .names{font-size:1.18rem;line-height:1.8;margin-bottom:8px}
+  .authors .names a{color:var(--ink);text-decoration:none}
+  .authors sup{font-size:.68em;color:var(--sub);padding-left:1px}
+  .affil{color:var(--sub);font-size:1.02rem;margin-bottom:0}
+  .affil span{white-space:nowrap}
+  @media(max-width:620px){.authors .names{font-size:1.05rem}.affil{font-size:.95rem}}
+  .btns{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:24px 0 4px}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:#edf3fb;color:#1f5596;
+       border:1px solid #cddcf0;border-radius:999px;padding:9px 20px;font-size:.94rem;
+       text-decoration:none;transition:.15s;box-shadow:0 1px 2px rgba(22,28,38,.04)}
+  .btn:hover{transform:translateY(-1px);background:#e1ebf7;border-color:#a9c3e6}
+  .btn.soon{background:#f1f3f6;color:#8a93a1;border-color:var(--line);cursor:default;pointer-events:none}
+  .btn .tag{font-size:.7rem;background:rgba(22,28,38,.07);border-radius:6px;padding:1px 6px}
+  .btn .ic{width:17px;height:17px;fill:currentColor;flex:none}
+  .btn .axi{height:17px;width:15px;fill:currentColor;flex:none}
+  .btn .emo{font-size:1rem;line-height:1}
+
+  /* ---- generic cards ---- */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}
+  @media(max-width:700px){.two{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:19px 21px;background:#fff}
+  .card p{font-size:.93rem;color:var(--sub);margin:0}
+  .card.red{border-top:3px solid var(--accent)} .card.red h3{color:var(--accent)}
+  .card.blue{border-top:3px solid var(--accent2)} .card.blue h3{color:var(--accent2)}
+  .card .ex{font-size:.88rem;color:var(--sub);background:var(--soft);border-radius:8px;padding:8px 12px;margin-top:12px}
+
+  /* Formulation: 一道题的结构示意 */
+  .fmt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:26px;align-items:center;
+       background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-top:4px}
+  .fmt figure{margin:0}
+  .fmt img{width:100%;border-radius:10px}
+  .fmt figcaption{font-size:.8rem;color:var(--sub);text-align:center;margin-top:8px}
+  .fmt figcaption .src{display:inline-block;margin-top:4px;font-size:.74rem;opacity:.85}
+  .fmt-q .qtext{margin-bottom:10px}
+  .fopts{list-style:none;margin:0;padding:0}
+  .fopts li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;
+            padding:7px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;font-size:.9rem;line-height:1.4}
+  .fopts li b{color:var(--sub)}
+  .fopts li span{display:block;font-size:.78rem;color:var(--sub);margin-top:2px}
+  .fopts li em{font-style:normal;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;color:var(--sub);
+               background:var(--soft);border-radius:5px;padding:1px 6px;margin-top:2px;white-space:nowrap}
+  .fopts li em.comp{color:var(--accent2);background:#ecf3fb}
+  .fopts li.ok{border-color:var(--good);background:#effaf3}
+  .fopts li.ok b{color:var(--good)}
+  .fopts li span i{font-style:normal;font-weight:700;font-size:.64rem;letter-spacing:.06em;text-transform:uppercase;
+                   color:var(--accent2);margin-right:6px}
+  .fmt-foot{font-size:.84rem;color:var(--sub);margin:10px 0 0}
+  /* 题型卡片: 标题旁小图标, 例句固定在卡片底部使两张卡片对齐 */
+  .tcard{display:flex;flex-direction:column}
+  .tcard h3{display:flex;align-items:center;gap:10px}
+  .tcard .ticon{width:30px;height:23px;flex:none}
+  .tcard .ex{margin-top:auto}
+  .tcard p{margin-bottom:14px}
+  @media(max-width:760px){.fmt{grid-template-columns:minmax(0,1fr);padding:16px}}
+  /* ---- quiz ---- */
+  .quiz-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px}
+  .quiz-tabs .brk{flex-basis:100%;height:0}
+  @media(max-width:760px){
+    .quiz-tabs{gap:6px;margin-bottom:16px}
+    .quiz-tabs .brk{display:none}
+    .qtab{padding:4px 12px;font-size:.8rem}
+  }
+  .qtab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 15px;font-size:.84rem;cursor:pointer;color:var(--sub);transition:.14s;font-family:inherit}
+  .qtab:hover{border-color:#b9c2d0}
+  .qtab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .quiz-stage{position:relative;overflow:hidden;padding:38px 0}
+  #qzCanvas{position:absolute;left:0;top:0;border-radius:12px;touch-action:none;opacity:0;transition:opacity .35s}
+  #qzCanvas.on{opacity:1}
+  #qzCanvas.free{cursor:grab}
+  #qzCanvas.free:active{cursor:grabbing}
+  /* 内容容器: 左边缘与 .wrap 对齐 (1000px wrap → 内容半宽 478), 右边缘为视口右缘(答题后卡片停靠处) */
+  .quiz-stage{--edge:max(22px, calc(50vw - 478px));--gap:22px}
+  .qz-inner{position:relative;pointer-events:none;padding-left:var(--edge)}
+  .quiz-cols{display:grid;grid-template-columns:auto minmax(0,1fr);gap:30px;align-items:center;min-height:580px}
+  @media(max-width:760px){.quiz-cols{grid-template-columns:minmax(0,1fr);justify-items:center;min-height:0}
+    .qz-inner{padding-right:22px}
+    .qa-card{margin-right:0 !important;border-radius:var(--radius) !important;width:100% !important;max-width:520px}
+    .quiz-stage{padding:8px 0 24px}
+    /* 手机: 答题后槽位本身展开到整行宽, 题目卡随之下移, 而不是被全景盖住 */
+    #qzLeft,.view-slot{transition:width 2.2s cubic-bezier(.65,0,.35,1),height 2.2s cubic-bezier(.65,0,.35,1)}   /* ≈ openStage 的 easeInOutCubic */
+    .hint{white-space:normal;max-width:100%}
+    #qzCanvas{touch-action:pan-y}}
+  .view-slot{border-radius:12px;background:var(--soft)}
+  .hint{font-size:.8rem;color:var(--sub);margin:10px auto 0;text-align:center;width:fit-content;white-space:nowrap;
+    pointer-events:auto;background:rgba(255,255,255,.78);backdrop-filter:blur(4px);border-radius:8px;padding:2px 12px;
+    transition:transform 2.2s cubic-bezier(.3,.7,.25,1)}
+  .qa-card{background:rgba(255,255,255,.92);backdrop-filter:blur(9px) saturate(1.15);
+    border:1px solid rgba(228,232,239,.9);border-radius:var(--radius);padding:18px 22px;
+    box-shadow:0 8px 26px rgba(22,28,38,.09);width:520px;justify-self:end;pointer-events:auto;
+    margin-right:var(--edge);
+    transition:margin-right 2.2s cubic-bezier(.3,.7,.25,1), border-radius 2.2s cubic-bezier(.3,.7,.25,1)}
+  .qa-card.docked{margin-right:22px}
+  .qbadge{display:inline-block;align-self:flex-start;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;border-radius:6px;padding:2px 8px;margin-bottom:10px;font-weight:700}
+  .qbadge.contextual{color:var(--accent);background:#fdeeec}
+  .qbadge.directional{color:var(--accent2);background:#ecf3fb}
+  .qtext{font-weight:600;margin-bottom:14px}
+  .opt{display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:9px 13px;margin-bottom:8px;cursor:pointer;transition:.12s;font-size:.95rem}
+  .opt:hover{border-color:#b9c2d0}
+  .opt .letter{font-weight:700;color:var(--sub)}
+  .opt.correct{border-color:var(--good);background:#effaf3}
+  .opt.correct .letter{color:var(--good)}
+  .opt.wrong{border-color:var(--accent);background:#fdf1ef}
+  .opt.wrong .letter{color:var(--accent)}
+  .opt.dim{opacity:.55;pointer-events:none}
+  .opt.locked{pointer-events:none}
+  .verdict{font-weight:700;margin:10px 0 4px;min-height:1.5em}
+  .verdict.ok{color:var(--good)} .verdict.no{color:var(--accent)}
+  .reveal{display:none;margin-top:22px}
+  .reveal.show{display:block;animation:fade .5s}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  details.rat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px;font-size:.9rem}
+  details.rat summary{cursor:pointer;font-weight:600;color:var(--accent2)}
+  details.rat p{margin:8px 0 0}
+
+  /* ---- stats ---- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:22px 0 28px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 14px;text-align:center}
+  .stat .num{font-family:var(--serif);font-size:1.9rem;font-weight:700;line-height:1.25}
+  .stat .lab{font-size:.85rem;color:var(--sub);margin-top:2px}
+  .metric{text-align:left;padding:17px 19px}
+  .metric h3{font-family:var(--serif);font-size:1.05rem;margin-bottom:4px}
+  .metric p{font-size:.9rem;color:var(--sub);margin:0;line-height:1.5}
+  .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:center}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:end;max-width:880px;margin:0 auto}
+  @media(max-width:700px){.grid2{grid-template-columns:minmax(0,1fr)}.grid3{grid-template-columns:minmax(0,1fr);max-width:360px}}
+  /* 比 .wrap 更宽的图 (teaser / pipeline) */
+  .teaser img{width:100%}
+  .benchrow{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:28px;margin-top:4px}
+  .cells{align-items:stretch}
+  .cells > div{display:flex;flex-direction:column}
+  .cells > div > img{margin:auto 0}
+  .cells > div > .figcap{margin-top:12px}
+  @media(max-width:760px){.benchrow{grid-template-columns:minmax(0,1fr)}}
+
+  /* ---- tables ---- */
+  .tblwrap{overflow-x:auto;margin-top:6px;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:620px;background:#fff}
+  th,td{padding:7px 10px;text-align:center;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th{font-size:.78rem;letter-spacing:.03em;color:var(--sub);border-bottom:2px solid var(--ink);font-weight:600;white-space:nowrap}
+  tr.grp td{text-align:left;font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;font-weight:700;
+            color:var(--sub);background:#eef1f6;padding:5px 10px}
+  td:first-child,th:first-child{text-align:left;white-space:nowrap}
+  tr.hl td{background:#f2f8f5}
+  tr.hl td:first-child{font-weight:600}
+  tr.sep td{border-top:1px solid #cfd6e0}
+  .ref td{color:var(--sub);background:#fafbfd}
+  .human td{font-weight:700;background:#fbf8ef;color:var(--ink)}
+  .up{color:var(--good);font-weight:700}
+  .dn{color:var(--sub)}
+  /* Table 1: 与论文一致, Joint 列灰底, 红=全体最佳, 浅红=开源最佳 */
+  table.t1{min-width:880px;font-size:.86rem}
+  table.t1 th,table.t1 td{padding:6px 8px}
+  table.t1 tr.hg th{border-bottom:1px solid var(--line)}
+  table.t1 .gs{border-left:1px solid #cfd6e0}
+  table.t1 td.j,table.t1 th.j{background:#f1f3f6}
+  table.t1 tr.human td{background:#fbf8ef}
+  .b1{background:#f5c6c0 !important}
+  .b2{background:#fce6e3 !important}
+  .key{padding:0 5px;border-radius:4px;color:var(--ink)}
+  h2.subh{font-size:1.42rem;margin:58px 0 6px}
+  #results .two .card h3{font-family:var(--serif);font-size:1.05rem}
+  /* 与 Fig. 4 一致: 感知类为蓝色系, 推理类为橙色系 */
+  .card.perc{border-top:3px solid #90caf9} .card.perc h3{color:#1e6fb0}
+  .card.reas{border-top:3px solid #ffb74d} .card.reas h3{color:#a8610a}
+  .err{font-weight:600;padding:1px 5px;border-radius:4px}
+  .e-ha{background:#bbdefb;color:#0e4f78} .e-me{background:#90caf9;color:#0e4f78}
+  .e-oa{background:#ffcc80;color:#7a4a00} .e-lo{background:#ffb74d;color:#6b3e00}
+  .fig4{display:grid;grid-template-columns:minmax(0,2.23fr) minmax(0,2.73fr);gap:26px;align-items:start}
+  .fig4 figure{margin:0}
+  .fig4 img{width:100%}
+  @media(max-width:760px){.fig4{grid-template-columns:minmax(0,1fr)}}
+  table.t2{min-width:820px}
+  .bl{background:#dcedf9 !important}
+  .gy{background:#e8e9ec !important}
+  table.tsm{min-width:0;font-size:.84rem}
+  table.tsm th,table.tsm td{padding:6px 8px}
+  tr.dl td{color:var(--good);font-weight:700}
+
+
+  /* ---- compare slider ---- */
+  .cmp-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px}
+  .cmp{position:relative;overflow:hidden;border-radius:12px;border:1px solid var(--line);box-shadow:0 6px 22px rgba(22,28,38,.1);user-select:none;touch-action:none;cursor:ew-resize}
+  .cmp img{width:100%;display:block;pointer-events:none}
+  .cmp .top{position:absolute;inset:0;overflow:hidden}
+  .cmp .top img{position:absolute;inset:0;height:100%;width:auto;max-width:none}
+  .cmp .bar{position:absolute;top:0;bottom:0;width:3px;background:#fff;box-shadow:0 0 8px rgba(0,0,0,.4);transform:translateX(-50%)}
+  .cmp .knob{position:absolute;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:.9rem;color:var(--ink)}
+  .cmp .lab{position:absolute;top:10px;font-size:.74rem;font-weight:700;color:#fff;background:rgba(0,0,0,.55);border-radius:6px;padding:2px 9px}
+  .cmp .lab.l{left:10px}.cmp .lab.r{right:10px}
+
+  /* ---- bibtex ---- */
+  pre.bib{background:#111826;color:#dbe4f3;border-radius:var(--radius);padding:20px 24px;font-size:.84rem;overflow-x:auto;line-height:1.55;font-family:var(--mono)}
+  .copybtn{float:right;background:#2a3550;color:#fff;border:none;border-radius:8px;padding:4px 12px;font-size:.78rem;cursor:pointer;font-family:inherit}
+  .copybtn:hover{background:#3a4868}
+
+  footer{border-top:1px solid var(--line);padding:28px 0 44px;color:var(--sub);font-size:.86rem;text-align:center}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <a class="brand" href="#">OpenView</a>
+    <a href="#task">Formulation</a>
+    <a href="#quiz">Interactive Demo</a>
+    <a href="#pipeline">Method</a>
+    <a href="#dataset">Dataset &amp; Benchmark</a>
+    <a href="#results">Results</a>
+    <a href="#application">Application</a>
+    <a href="#bibtex">BibTeX</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header>
+  <div class="wrap">
+    <div class="eyebrow">NeurIPS 2026 · Evaluations &amp; Datasets Track</div>
+    <h1><span class="nm">OpenView</span>: Empowering MLLMs with <br class="wide">Out-of-view VQA</h1>
+
+    <div class="authors">
+      <p class="names">
+        <a>Qixiang Chen</a><sup>1</sup>,
+        <a>Cheng Zhang</a><sup>1</sup>,
+        <a>Chi-Wing Fu</a><sup>2</sup>,
+        <a>Jingwen Ye</a><sup>1</sup>,
+        <a>Jianfei Cai</a><sup>1</sup>
+      </p>
+      <p class="affil">
+        <span><sup>1</sup>Monash University</span> &nbsp;&nbsp;
+        <span><sup>2</sup>The Chinese University of Hong Kong</span>
+      </p>
+    </div>
+
+    <div class="btns">
+      <a class="btn" href="https://arxiv.org/abs/2512.18563" target="_blank" rel="noopener"><!-- arXiv mark from Academicons, https://jpswalsh.github.io/academicons, SIL OFL 1.1 --><svg class="axi" viewBox="0 0 448 512" aria-hidden="true"><g transform="matrix(1.5499998,0,0,-1.5499998,-123.19936,553.59966)"><path fill="currentColor" d="m 119.65,351.996 c -5.84961,0.13477 -11.1943,-3.29883 -13.502,-8.67578 -2.19629,-5.27051 -0.61914,-8.9668 4.19727,-15.8652 7.05469,-10.3799 78.8242,-96.5625 78.8242,-96.5625 l -15.8828,-14.8633 c -13.3809,-13.3779 -13.9561,-31.333 -1.50977,-43.7754 l 18.4922,-17.6133 -51.5977,-63.377 c -4.00586,-4.26758 -6.48535,-11.7559 -4.24805,-17.1309 2.27832,-5.53613 7.69727,-9.12891 13.6836,-9.07031 3.83398,0.0957 7.43262,1.87402 9.83789,4.86133 l 61.3691,57.0566 94.5762,-90.0703 c 3.19434,-3.08398 7.44336,-4.83984 11.8828,-4.91016 1.60449,0.0039 3.19824,0.245117 4.73242,0.714844 5.7793,1.80566 10.249,6.41797 11.8711,12.252 1.2998,5.47363 -0.27637,11.2334 -4.18164,15.2832 l -83.0859,100.011996 14.8789,13.834 c 11.0957,10.0029 11.1543,27.3906 0.12695,37.4688 l -16.2949,15.6309 56.2559,66.4434 0.0742,0.0859 0.0664,0.0899 c 5.02734,6.53125 7.43164,11.5615 4.83984,17.9395 -3.13379,5.96875 -8.69727,10.29 -15.2559,11.8516 -0.67676,0.0908 -1.35938,0.13574 -2.04297,0.13671 l -0.004,-0.0117 c -4.42871,-0.27051 -8.61035,-2.13086 -11.7754,-5.24023 l -0.13086,-0.10743 -0.12304,-0.11132 -65.207,-59.127 -89.8965,86.2402 c 0,0 -5.33398,6.47754 -10.9707,6.61133 z m 178.104,-33.041 c 0.47852,-0.002 0.95703,-0.0332 1.43164,-0.0957 4.84277,-1.33301 8.95605,-4.54004 11.4316,-8.91016 1.44922,-3.5625 1.00293,-6.45703 -4.19727,-13.2148 l -56.0586,-66.2188 -26.375,25.3027 64.9551,58.9062 c 2.33887,2.41504 5.46484,3.91113 8.8125,4.2168 v 0.0137 z M 192.436,227.402 334.446,57.244 c 2.78711,-3.48926 4.5293,-6.97949 3.3418,-10.9121 -1.16113,-4.30273 -4.43457,-7.71777 -8.68555,-9.05664 -1.08105,-0.333984 -2.20508,-0.503906 -3.33594,-0.505859 -3.20801,0.07617 -6.26953,1.35645 -8.57617,3.58789 l -142.033,135.284999 c -11.1719,11.1719 -9.48242,26.0195 1.39258,36.8945 z"/></g></svg> Paper</a>
+      <a class="btn" href="https://github.com/q1xiangchen/OpenView" target="_blank" rel="noopener"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Code</a>
+      <a class="btn" href="https://huggingface.co/datasets/openview2026/OpenView_data" target="_blank" rel="noopener"><span class="emo" aria-hidden="true">🤗</span> Dataset &amp; Benchmark</a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ TEASER ============ -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="teaser"><img src="assets/figures/teaser.jpg" alt="Examples of contextual and directional out-of-view questions, and model performance before and after OpenView training"></div>
+    <p class="figcap">Examples of out-of-view VQA. OpenView synthesizes multi-choice out-of-view VQA data, featuring both
+      <b style="color:var(--accent)">contextual</b> and <b style="color:var(--accent2)">directional</b> question types.
+      Empowered with OpenView, several MLLMs can largely improve their performance on out-of-view VQA, making their
+      capability closer to human performance.</p>
+  </div>
+</section>
+
+<!-- ============ ABSTRACT ============ -->
+<section id="abstract" class="altband" style="padding:40px 0">
+  <div class="wrap narrow">
+    <div class="kicker">Abstract</div>
+    <p style="text-align:justify;margin:0">
+      Recent multimodal large language models (MLLMs) show great potential in natural image understanding.
+      Yet, they perform well, mainly on reasoning in-view contents within the image frame. This paper presents
+      the first study on out-of-view (OOV) understanding, i.e., the ability to reason about objects, activities,
+      and scenes beyond the visible frame of a perspective view. Our technical contributions are threefold.
+      First, we design <b>OpenView</b>, a four-stage pipeline that leverages panoramic imagery for large-scale
+      and diverse multi-choice VQA synthesis, where full-scene coverage enables flexible view framing while
+      preserving global scene awareness. Second, we curate <b>OpenView-Dataset</b>, a high-quality synthetic
+      dataset from diverse real-world panoramas to empower MLLMs upon supervised fine-tuning. Third, we build
+      <b>OpenView-Bench</b>, a benchmark that jointly measures choice and rationale accuracy for interpretable
+      and diagnosable evaluation. Experimental results show that despite having a large gap from human performance in
+      OOV VQA answer selection, multiple MLLMs, upon empowered by OpenView, can consistently boost their
+      performance, uplifted from 48.3% to 62.3% on average.
+    </p>
+  </div>
+</section>
+
+<!-- ============ TASK ============ -->
+<section id="task">
+  <div class="wrap">
+    <div class="kicker">Formulation</div>
+    <h2>Out-of-view (OOV) understanding</h2>
+    <p class="lead wide">We introduce a new MLLM understanding task: reasoning about objects, activities, and scenes
+      beyond the visible frame of a perspective view. It requires models to integrate visible cues, such as scene
+      structure, camera viewpoint, and object appearance, with contextual priors and world knowledge.
+      Since multiple hypotheses about unseen regions may be consistent with the observed image, we formulate it as
+      single-view multi-choice VQA, i.e., comparative plausibility reasoning among a small set of candidate hypotheses.</p>
+
+    <div class="fmt">
+      <figure>
+        <img src="assets/figures/format_example.jpg" alt="Perspective view of a museum exhibit about tsunamis" loading="lazy" decoding="async">
+        <figcaption>Input: a single perspective view<br>
+          <span class="src">An example from OpenView-Dataset; rationales abridged.</span></figcaption>
+      </figure>
+      <div class="fmt-q">
+        <span class="qbadge contextual">Contextual · Culture scene</span>
+        <div class="qtext">Which of the following sets of objects would most likely appear outside of this view?</div>
+        <ol class="fopts">
+          <li class="ok"><b>A</b><div>Interactive touch screens and additional infographic panels.
+            <span><i>Rationale:</i>Highly plausible in this educational museum setting, complementing the existing display format.</span></div><em>candidate</em></li>
+          <li><b>B</b><div>A large aquarium with marine life displays.
+            <span><i>Rationale:</i>Could relate to the tsunami theme, but seems too large and unrelated to the exhibit style.</span></div><em>candidate</em></li>
+          <li><b>C</b><div>Artisanal souvenirs and gift shop merchandise.
+            <span><i>Rationale:</i>Plausible, but less consistent next to an educational exhibit than more educational material.</span></div><em>candidate</em></li>
+          <li><b>D</b><div>Sports equipment like basketball hoops and soccer nets.
+            <span><i>Rationale:</i>Lacks connection to the educational theme about natural disasters.</span></div><em>candidate</em></li>
+          <li><b>E</b><div>None of the above.
+            <span><i>Rationale:</i>Unlikely, since A presents a strong case.</span></div><em class="comp">compositional</em></li>
+        </ol>
+        <p class="fmt-foot">Every option comes with a rationale. Models are scored jointly on the selected answer and its
+          rationale: <a href="#results">choice, rationale, and joint accuracy</a>.</p>
+      </div>
+    </div>
+
+    <p class="sub center" style="margin:34px 0 0;font-weight:600;color:var(--ink)">Questions come in two types</p>
+    <div class="two" style="margin-top:14px">
+      <div class="card red tcard">
+        <h3><svg class="ticon" viewBox="0 0 32 24" aria-hidden="true"><rect x="9" y="6" width="14" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><rect x="2" y="1.5" width="28" height="21" rx="3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"/></svg>Contextual questions</h3>
+        <p>Assess whether objects, attributes, or conditions are plausible beyond the visible region.</p>
+        <div class="ex">“Which type of feature would be <i>least</i> plausible to find outside the current view?”</div>
+      </div>
+      <div class="card blue tcard">
+        <h3><svg class="ticon" viewBox="0 0 32 24" aria-hidden="true"><rect x="3" y="6" width="14" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 15c3-1 6-3.5 6-7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M22.6 8.4 26 6.6l2.4 3.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Directional questions</h3>
+        <p>Emphasize spatial continuity under explicit changes in camera view direction.</p>
+        <div class="ex">“After tilting the camera down about 40°, what would most likely appear in view?”</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz" class="altband">
+  <div class="wrap">
+    <div class="kicker">Interactive Demo</div>
+    <h2>Can you reason beyond the frame?</h2>
+    <p class="lead">Like the models, you see only a single perspective view. Pick a scene and answer its question.
+      The view then expands into the full 360° panorama so you can check your answer.</p>
+    <div class="quiz-tabs" id="quizTabs"></div>
+  </div>
+  <div class="quiz-stage" id="qzStage">
+    <canvas id="qzCanvas"></canvas>
+    <div class="qz-inner">
+      <div class="quiz-cols">
+        <div id="qzLeft">
+          <div class="view-slot" id="qzSlot"></div>
+          <div class="hint" id="qHint">This crop is all the model sees.</div>
+        </div>
+        <div class="qa-card" id="qaCard">
+          <span class="qbadge" id="qBadge"></span>
+          <div class="qtext" id="qText"></div>
+          <div id="qOpts"></div>
+          <div class="verdict" id="qVerdict"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="reveal" id="qReveal">
+      <details class="rat"><summary>Rationale &amp; full panorama</summary>
+        <div id="qRat"></div>
+        <img id="qPano" src="" alt="Full panorama" style="border-radius:8px;margin-top:10px">
+        <p class="figcap" style="margin-top:8px">Full 360° panorama. The <span style="color:var(--accent);font-weight:700">red frame</span> marks
+          the perspective view you were shown. <span id="qSrc"></span></p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PIPELINE ============ -->
+<section id="pipeline">
+  <div class="wrap">
+    <div class="kicker">Method</div>
+    <h2>The OpenView pipeline</h2>
+    <p class="lead wide">Cropping subviews from ordinary images leaves question design without the full scene context.
+      Panoramas instead provide full 180°×360° views of the target environments, enabling flexible
+      view selection while preserving global scene awareness. OpenView is an automatic four-stage pipeline: a
+      <b>data preprocessor</b> for panorama filtering, a <b>visual analyzer</b> for semantic and spatial annotation,
+      a <b>proposal generator</b> for constructing VQAs, and a <b>proposal refiner</b> for quality assurance and augmentation.</p>
+    <div class="shot"><img src="assets/figures/pipeline.png" alt="OpenView four-stage pipeline" loading="lazy" decoding="async"></div>
+  </div>
+</section>
+
+<!-- ============ DATASET ============ -->
+<section id="dataset" class="altband">
+  <div class="wrap">
+    <div class="kicker">Dataset &amp; Benchmark</div>
+    <h2>OpenView-Dataset</h2>
+    <p class="lead wide" style="margin-bottom:0">Generated with the OpenView pipeline, OpenView-Dataset contains over 158k
+      realistic multi-choice OOV VQAs from 16k filtered panoramas, spanning a broad range of real-world scenarios.</p>
+    <div class="stats">
+      <div class="stat"><div class="num">158k</div><div class="lab">synthetic OOV VQAs</div></div>
+      <div class="stat"><div class="num">16k</div><div class="lab">filtered panoramas</div></div>
+      <div class="stat"><div class="num">11</div><div class="lab">scene categories</div></div>
+      <div class="stat"><div class="num">5</div><div class="lab">public panorama sources</div></div>
+    </div>
+    <div class="grid2 cells">
+      <div>
+        <img src="assets/figures/ds_sunburst.png" alt="Distribution of the first four words of questions" style="max-width:400px;margin:0 auto" loading="lazy" decoding="async">
+        <p class="figcap">Question patterns exhibit high linguistic consistency, guiding the model to focus on OOV understanding.</p>
+      </div>
+      <div>
+        <img src="assets/figures/ds_category.png" alt="Scene category distribution across indoor and outdoor environments" loading="lazy" decoding="async">
+        <p class="figcap">Scene category distribution across indoor and outdoor environments, showing broad coverage of real-world scenarios.</p>
+      </div>
+    </div>
+    <div class="grid2 cells" style="margin-top:22px">
+      <div>
+        <img src="assets/figures/ds_options_wc.png" alt="Word cloud of options" loading="lazy" decoding="async">
+        <p class="figcap">The option word cloud reveals diverse object and scene terms.</p>
+      </div>
+      <div>
+        <img src="assets/figures/ds_rationales_wc.png" alt="Word cloud of rationales" loading="lazy" decoding="async">
+        <p class="figcap">The rationale word cloud highlights recurring reasoning phrases.</p>
+      </div>
+    </div>
+    <div class="grid3" style="margin-top:18px">
+      <img src="assets/figures/ds_len_question.png" alt="Word length distribution of questions" loading="lazy" decoding="async">
+      <img src="assets/figures/ds_len_option.png" alt="Word length distribution of options" loading="lazy" decoding="async">
+      <img src="assets/figures/ds_len_rationale.png" alt="Word length distribution of rationales" loading="lazy" decoding="async">
+    </div>
+    <p class="figcap">Word length distributions for questions, options, and rationales.</p>
+
+    <h2 style="margin-top:56px">OpenView-Bench</h2>
+    <p class="lead wide" style="margin-bottom:0">A manually-verified benchmark curated from panoramas explicitly excluded
+      from training, comprising 1,155 high-quality OOV VQAs with balanced task difficulty, scene coverage and answer distribution.</p>
+    <div class="stats">
+      <div class="stat"><div class="num">1,155</div><div class="lab">manually verified VQAs</div></div>
+      <div class="stat"><div class="num">77</div><div class="lab">panoramas, 7 per<br>scene category</div></div>
+      <div class="stat"><div class="num">580 / 575</div><div class="lab">contextual / directional</div></div>
+      <div class="stat"><div class="num">86.0%</div><div class="lab">human choice accuracy<br>(Fleiss' κ = 0.82)</div></div>
+    </div>
+    <div class="benchrow cells">
+      <div>
+        <img src="assets/figures/bench_category.png" alt="Distribution of scene categories across VQAs in OpenView-Bench" loading="lazy" decoding="async">
+        <p class="figcap">Distribution of scene categories across VQAs in OpenView-Bench.</p>
+      </div>
+      <div>
+        <img src="assets/figures/bench_answers.png" alt="Distribution of correct answers across the five options" loading="lazy" decoding="async">
+        <p class="figcap">Answer distribution across the five options.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULTS ============ -->
+<section id="results">
+  <div class="wrap">
+    <div class="kicker">Results</div>
+    <h2>Evaluation on OpenView-Bench</h2>
+    <p class="lead wide">A substantial gap is evident between humans and MLLMs. While humans surpass 83% choice accuracy
+      across both task types, model accuracies still fall short of this level. Considering rationale evaluation
+      reveals a lower joint accuracy, particularly in directional tasks.</p>
+
+    <div class="stats" style="margin-top:0">
+      <div class="stat metric"><h3>Choice accuracy</h3>
+        <p>The proportion of correctly-selected options among all the questions.</p></div>
+      <div class="stat metric"><h3>Rationale accuracy</h3>
+        <p>The reliability of the model in justifying the correctly-chosen answers through reasonable option-wise explanations, judged by GPT5-mini against human-revised rationales.</p></div>
+      <div class="stat metric"><h3>Joint accuracy</h3>
+        <p>The proportion of questions for which both the selected answer and its rationale are correct.</p></div>
+    </div>
+
+    <div class="tblwrap">
+      <table class="t1">
+        <thead>
+          <tr class="hg"><th rowspan="2">Model</th><th rowspan="2">Rank</th>
+            <th colspan="3" class="gs">Contextual</th><th colspan="3" class="gs">Directional</th><th colspan="3" class="gs">Overall</th></tr>
+          <tr><th class="gs">Choice</th><th>Rationale</th><th class="j">Joint</th>
+            <th class="gs">Choice</th><th>Rationale</th><th class="j">Joint</th>
+            <th class="gs">Choice</th><th>Rationale</th><th class="j">Joint</th></tr>
+        </thead>
+        <tbody>
+          <tr class="human"><td>Human-level</td><td>–</td><td class="gs">83.02</td><td>–</td><td class="j">–</td><td class="gs">89.58</td><td>–</td><td class="j">–</td><td class="gs">86.00</td><td>–</td><td class="j">–</td></tr>
+          <tr class="ref"><td>GPT-4o<sup>†</sup></td><td>–</td><td class="gs">64.14</td><td>–</td><td class="j">–</td><td class="gs">41.74</td><td>–</td><td class="j">–</td><td class="gs">52.99</td><td>–</td><td class="j">–</td></tr>
+          <tr class="ref"><td>GPT-5<sup>†</sup></td><td>–</td><td class="gs">63.79</td><td>–</td><td class="j">–</td><td class="gs">44.52</td><td>–</td><td class="j">–</td><td class="gs">54.20</td><td>–</td><td class="j">–</td></tr>
+          <tr class="grp"><td colspan="11">Proprietary models</td></tr>
+          <tr><td>GPT-4o-mini</td><td>9</td><td class="gs">63.10</td><td>93.99</td><td class="j">59.31</td><td class="gs">48.35</td><td>87.05</td><td class="j">42.09</td><td class="gs">55.76</td><td>90.99</td><td class="j">50.74</td></tr>
+          <tr><td>GPT-4o</td><td>6</td><td class="gs">71.72</td><td>83.89</td><td class="j">60.17</td><td class="gs">55.83</td><td>89.41</td><td class="j">49.92</td><td class="gs">63.81</td><td>86.30</td><td class="j">55.07</td></tr>
+          <tr><td>Gemini-3-flash</td><td>8</td><td class="gs b1">77.59</td><td>78.89</td><td class="j">61.21</td><td class="gs b1">62.43</td><td>70.19</td><td class="j">43.82</td><td class="gs b1">70.04</td><td>75.03</td><td class="j">52.55</td></tr>
+          <tr><td>GPT-5</td><td>2</td><td class="gs">70.86</td><td>91.73</td><td class="j">65.00</td><td class="gs">57.04</td><td>95.43</td><td class="j">54.43</td><td class="gs">63.98</td><td>93.37</td><td class="j">59.74</td></tr>
+          <tr><td>GPT-5.4</td><td>1</td><td class="gs">70.52</td><td class="b1">99.02</td><td class="j b1">69.83</td><td class="gs">59.30</td><td class="b1">96.48</td><td class="j b1">57.21</td><td class="gs">64.94</td><td class="b1">97.87</td><td class="j b1">63.56</td></tr>
+          <tr class="grp"><td colspan="11">Open-source models</td></tr>
+          <tr><td>LLaVA-NeXT-Mistral-7B</td><td>17</td><td class="gs">42.07</td><td>39.34</td><td class="j">16.55</td><td class="gs">29.04</td><td>29.94</td><td class="j">8.69</td><td class="gs">35.58</td><td>35.52</td><td class="j">12.64</td></tr>
+          <tr><td>GLM-4.1V-9B-Base</td><td>14</td><td class="gs">56.38</td><td>87.46</td><td class="j">49.31</td><td class="gs">42.78</td><td>79.10</td><td class="j">33.84</td><td class="gs">49.61</td><td>83.89</td><td class="j">41.62</td></tr>
+          <tr><td>GLM-4.1V-9B-Thinking</td><td>11</td><td class="gs">52.41</td><td>92.11</td><td class="j">48.27</td><td class="gs">45.04</td><td>90.73</td><td class="j">40.86</td><td class="gs">48.74</td><td>91.47</td><td class="j">44.58</td></tr>
+          <tr><td>InternVL3.5-8B</td><td>12</td><td class="gs">56.90</td><td>90.00</td><td class="j">51.21</td><td class="gs">45.39</td><td>79.69</td><td class="j">36.17</td><td class="gs">51.17</td><td>85.45</td><td class="j">43.72</td></tr>
+          <tr><td>InternVL3.5-8B<sup>‡</sup></td><td>15</td><td class="gs">49.48</td><td>82.58</td><td class="j">40.86</td><td class="gs">42.26</td><td>85.60</td><td class="j">36.17</td><td class="gs">45.89</td><td>83.96</td><td class="j">38.53</td></tr>
+          <tr><td>Qwen3-VL-8B-Instruct</td><td>10</td><td class="gs">58.10</td><td>94.96</td><td class="j">55.17</td><td class="gs">48.35</td><td>90.65</td><td class="j">43.83</td><td class="gs">53.25</td><td>93.01</td><td class="j">49.53</td></tr>
+          <tr><td>Qwen3-VL-8B-Thinking</td><td>7</td><td class="gs">67.41</td><td>91.05</td><td class="j">61.38</td><td class="gs">49.57</td><td>91.23</td><td class="j">45.22</td><td class="gs">58.53</td><td>91.12</td><td class="j">53.33</td></tr>
+          <tr><td>Ovis2.5-9B</td><td>16</td><td class="gs">66.21</td><td>65.89</td><td class="j">43.63</td><td class="gs">43.65</td><td>66.14</td><td class="j">28.87</td><td class="gs">54.98</td><td>65.98</td><td class="j">36.28</td></tr>
+          <tr><td>MiniCPM-V 4.5</td><td>3</td><td class="gs b2">68.79</td><td>93.23</td><td class="j">64.13</td><td class="gs b2">57.04</td><td>89.33</td><td class="j b2">50.95</td><td class="gs b2">62.94</td><td>91.47</td><td class="j b2">57.57</td></tr>
+          <tr class="sep"><td>Qwen2.5-VL-3B-Instruct</td><td>18</td><td class="gs">57.93</td><td>13.99</td><td class="j">8.10</td><td class="gs">44.70</td><td>12.06</td><td class="j">5.39</td><td class="gs">51.34</td><td>13.15</td><td class="j">6.75</td></tr>
+          <tr><td>Qwen2.5-VL-7B-Instruct</td><td>13</td><td class="gs">61.03</td><td>81.36</td><td class="j">49.65</td><td class="gs">45.39</td><td>76.63</td><td class="j">34.78</td><td class="gs">53.25</td><td>79.35</td><td class="j">42.25</td></tr>
+          <tr><td>Qwen2.5-VL-32B-Instruct</td><td>4</td><td class="gs">66.38</td><td>95.58</td><td class="j">63.45</td><td class="gs">53.22</td><td class="b2">94.12</td><td class="j">50.09</td><td class="gs">59.83</td><td class="b2">94.93</td><td class="j">56.80</td></tr>
+          <tr><td>Qwen2.5-VL-72B-Instruct</td><td>5</td><td class="gs">68.10</td><td class="b2">95.70</td><td class="j b2">65.17</td><td class="gs">51.13</td><td>92.52</td><td class="j">47.31</td><td class="gs">59.65</td><td>94.34</td><td class="j">56.27</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figcap">Results are reported as percentages, with models ranked by the overall joint accuracy.
+      The best results among all models and within open-source models are highlighted in
+      <span class="key b1">red</span> and <span class="key b2">light red</span>, respectively.
+      <sup>†</sup>Description-based test setting. <sup>‡</sup>Thinking mode enabled.</p>
+
+    <h2 class="subh">What makes OOV difficult?</h2>
+    <p class="lead wide" style="margin-bottom:18px">We analyze the responses of six representative models from different
+      performance tiers and categorize the errors into two primary types.</p>
+    <div class="fig4">
+      <figure>
+        <img src="assets/figures/error_breakdown.png" alt="Breakdown of error cases across models" loading="lazy" decoding="async">
+        <figcaption class="figcap"><b>Left:</b> Breakdown of error cases across models.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/figures/example_case.jpg" alt="An example contextual test case with model answers" loading="lazy" decoding="async">
+        <figcaption class="figcap"><b>Right:</b> An example test case. Baseline MLLMs misinterpret the scene, while fine-tuned models correctly infer the unseen activity.</figcaption>
+      </figure>
+    </div>
+    <div class="two" style="margin-top:22px">
+      <div class="card perc"><h3>Perception limitation</h3>
+        <p><b class="err e-me">Missed evidence</b>, where key objects or cues present in the frame are overlooked, and
+          <b class="err e-ha">hallucination</b>, where models generate descriptions inconsistent with the actual image content.</p></div>
+      <div class="card reas"><h3>Reasoning limitation</h3>
+        <p>The dominant failure mode, accounting for approximately 70% of all errors across models:
+          <b class="err e-oa">option analysis errors</b> in assessing each candidate against the visual context, and
+          <b class="err e-lo">logic errors</b> where final selections contradict the model's own preceding analysis.</p></div>
+    </div>
+
+    <h2 class="subh">OpenView-Dataset guides MLLMs with consistent improvements</h2>
+    <p class="lead wide" style="margin-bottom:14px">We fine-tune four open-source MLLMs on OpenView-Dataset. Supervised
+      fine-tuning yields substantial gains across all models; notably, the overall joint accuracy of
+      LLaVA-NeXT-Mistral-7B increases from 12.64% to 54.63%. After fine-tuning, Qwen3-VL-8B-Instruct achieves the
+      strongest overall OOV performance among open-source models.</p>
+    <div class="tblwrap">
+      <table class="t1 t2">
+        <thead>
+          <tr class="hg"><th rowspan="2">Model</th>
+            <th colspan="3" class="gs">Contextual</th><th colspan="3" class="gs">Directional</th><th colspan="4" class="gs">Overall</th></tr>
+          <tr><th class="gs">Choice</th><th>Rationale</th><th>Joint</th>
+            <th class="gs">Choice</th><th>Rationale</th><th>Joint</th>
+            <th class="gs">Choice</th><th>Rationale</th><th>Joint</th><th>% gain</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>LLaVA-NeXT-Mistral-7B</td><td class="gs">42.07</td><td>39.34</td><td>16.55</td><td class="gs">29.04</td><td>29.94</td><td>8.69</td><td class="gs">35.58</td><td>35.52</td><td>12.64</td><td rowspan="2" class="up">↑ 332%</td></tr>
+          <tr><td>+ OpenView-Dataset</td><td class="gs">71.55</td><td>90.84</td><td>65.00</td><td class="gs">49.57</td><td>89.12</td><td>44.18</td><td class="gs bl">60.61</td><td class="bl">90.14</td><td class="bl"><b>54.63</b></td></tr>
+          <tr class="sep"><td>InternVL3.5-8B</td><td class="gs">56.90</td><td>90.00</td><td>51.21</td><td class="gs">45.39</td><td>79.69</td><td>36.17</td><td class="gs">51.17</td><td>85.45</td><td>43.72</td><td rowspan="2" class="up">↑ 18%</td></tr>
+          <tr><td>+ OpenView-Dataset</td><td class="gs">66.03</td><td>90.86</td><td>59.99</td><td class="gs">48.00</td><td>89.13</td><td>42.78</td><td class="gs bl">57.06</td><td class="bl">90.14</td><td class="bl"><b>51.43</b></td></tr>
+          <tr class="sep"><td>Qwen2.5-VL-7B-Instruct</td><td class="gs">61.03</td><td>81.36</td><td>49.65</td><td class="gs">45.39</td><td>76.63</td><td>34.78</td><td class="gs">53.25</td><td>79.35</td><td>42.25</td><td rowspan="2" class="up">↑ 39%</td></tr>
+          <tr><td>+ OpenView-Dataset</td><td class="gs">72.76</td><td>93.36</td><td>67.93</td><td class="gs">56.00</td><td>87.89</td><td>49.22</td><td class="gs bl">64.42</td><td class="bl">90.99</td><td class="bl"><b>58.62</b></td></tr>
+          <tr class="sep"><td>Qwen3-VL-8B-Instruct</td><td class="gs">58.10</td><td>94.96</td><td>55.17</td><td class="gs">48.35</td><td>90.65</td><td>43.83</td><td class="gs">53.25</td><td>93.01</td><td>49.53</td><td rowspan="2" class="up">↑ 24%</td></tr>
+          <tr><td>+ OpenView-Dataset</td><td class="gs">77.07</td><td>93.29</td><td>71.90</td><td class="gs">57.22</td><td>89.36</td><td>51.13</td><td class="gs bl">67.19</td><td class="gy">91.62</td><td class="bl"><b>61.56</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figcap">The final column reports the relative improvement in overall joint accuracy. Gains are highlighted
+      in <span class="key bl">blue</span> and minor rationale drops in <span class="key gy">gray</span>.</p>
+
+    <h2 class="subh">Cross-paradigm generalization to MindCube</h2>
+    <p class="lead wide" style="margin-bottom:14px">Training on single-view plausibility comparison also improves multi-view 3D
+      spatial reasoning on MindCube, indicating that the visual reasoning skills induced by OpenView-Dataset are
+      transferable beyond its training paradigm.</p>
+    <div class="tblwrap" style="max-width:620px;margin:0 auto">
+          <table class="tsm">
+            <thead><tr><th>Model</th><th>Overall</th><th>Rotation</th><th>Among</th><th>Around</th></tr></thead>
+            <tbody>
+              <tr><td>Qwen2.5-VL-7B-Instruct</td><td>31.02</td><td>37.28</td><td>31.06</td><td>27.02</td></tr>
+              <tr><td>+ OpenView-Dataset</td><td>37.73</td><td>39.50</td><td>38.65</td><td>27.72</td></tr>
+              <tr class="dl"><td>Δ</td><td>+6.71</td><td>+2.22</td><td>+7.59</td><td>+0.70</td></tr>
+              <tr class="sep"><td>Qwen3-VL-8B-Instruct</td><td>29.23</td><td>35.25</td><td>29.48</td><td>23.27</td></tr>
+              <tr><td>+ OpenView-Dataset</td><td>41.50</td><td>35.62</td><td>43.05</td><td>29.86</td></tr>
+              <tr class="dl"><td>Δ</td><td>+12.27</td><td>+0.37</td><td>+13.57</td><td>+6.59</td></tr>
+            </tbody>
+          </table>
+    </div>
+    <p class="figcap">Performance on the MindCube benchmark. Fine-tuning on OpenView-Dataset improves performance across all question types.</p>
+  </div>
+</section>
+
+<!-- ============ APPLICATION ============ -->
+<section id="application" class="altband">
+  <div class="wrap">
+    <div class="kicker">Application</div>
+    <h2>Informative descriptions for panorama outpainting</h2>
+    <p class="lead wide">We prompt Qwen3-VL-8B-Instruct and its fine-tuned variant to describe the conditioned image and
+      iteratively infer adjacent views by rotating 45° to the right, forming a closed viewing loop. The resulting
+      multi-view descriptions condition image&amp;text-conditioned panorama generation with MVDiffusion.
+      Drag the slider to compare the two.</p>
+    <div class="cmp-tabs" id="cmpTabs"></div>
+    <div class="cmp" id="cmp">
+      <img id="cmpBase" src="" alt="Outpainting by base model">
+      <div class="top" id="cmpTop"><img id="cmpFt" src="" alt="Outpainting by fine-tuned model"></div>
+      <div class="bar" id="cmpBar"></div>
+      <div class="knob" id="cmpKnob">⇔</div>
+      <div class="lab l">+ OpenView-Dataset</div>
+      <div class="lab r">Base model</div>
+    </div>
+    <p class="figcap">The base model often repeats references to objects from the conditioned view, whereas the fine-tuned
+      model produces more informative and spatially coherent descriptions by introducing plausible unseen objects,
+      resulting in more complete scene interpretations.</p>
+  </div>
+</section>
+
+<!-- ============ BIBTEX ============ -->
+<section id="bibtex">
+  <div class="wrap narrow">
+    <h2 style="margin-bottom:16px">BibTeX</h2>
+    <p class="lead">If you find OpenView useful or relevant to your research, please consider citing our paper 😊</p>
+    <pre class="bib"><button class="copybtn" onclick="copyBib(this)">Copy</button><code id="bibcode">@article{chen2025openview,
+  title={OpenView: Empowering MLLMs with Out-of-view VQA},
+  author={Chen, Qixiang and Zhang, Cheng and Fu, Chi-Wing and Ye, Jingwen and Cai, Jianfei},
+  journal={arXiv preprint arXiv:2512.18563},
+  year={2025}
+}</code></pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Project page for <i>OpenView: Empowering MLLMs with Out-of-view VQA</i> (NeurIPS 2026).<br>
+    Panorama examples are shown for illustration only.
+  </div>
+</footer>
+
+<script>
+/* ---------------- Quiz ---------------- */
+const QUIZ = [
+ {id:"bench_nature", scene:"Nature", type:"directional", pitch:56.34, fovx:28.63, ar:0.5623, src:"360-1M",
+  q:"If you rotate right about 40\u00b0, what would you most likely see prominently?",
+  opts:["A continuation of the wooden railing along the path.", "A small stream running parallel to the path.", "A cluster of tall trees.", "A distant view of the ocean.", "Both B and C."],
+  ans:0,
+  rationale:"Option A is correct because the visible railing suggests it continues further. The path likely follows the railing\u2019s course. A stream (B) or tall trees (C) aren\u2019t indicated. The ocean (D) is too distant to appear immediately. Option E is wrong as neither B nor C follows logically from the scene."},
+ {id:"bench_civic", scene:"Civic", type:"directional", pitch:0.0, fovx:67.75, ar:1.3338, src:"360-1M",
+  q:"If you rotate your view slightly to the right, what would most likely become immediately visible?",
+  opts:["More people gathered under additional cherry blossom trees.", "An open area with no trees or people.", "A large building obstructing the view.", "A river or body of water.", "None of the above."],
+  ans:0,
+  rationale:"Option A is correct as the current view suggests a continuous pattern of people and trees. Rotating slightly right would naturally continue this pattern, revealing more people under cherry blossom trees. Option B contradicts the dense presence of trees and people. Option C introduces an unexpected element not hinted at in the view. Option D is unlikely given the absence of water features. Option E is incorrect as A is correct."},
+ {id:"bench_commercial", scene:"Commercial", type:"directional", pitch:0.0, fovx:55.85, ar:1.5, src:"360+x",
+  q:"After tilting upward slightly, which element would you expect to see appear?",
+  opts:["A second-floor balcony or walkway", "A large advertisement board", "More lights", "A glass elevator shaft", "Both A and C"],
+  ans:0,
+  rationale:"The current view includes a seating area at eye level, suggesting open spaces typical of a shopping mall. Tilting upward would likely reveal structures or walkways above, as malls often feature multi-level layouts, making Option A the most plausible. Options B and D are less likely since advertisements are generally placed at eye level, and elevators are usually standalone elements. Option C is incorrect because the visible ceiling edge indicates an open atrium, where lighting fixtures typically do not appear. Option E is also incorrect as it includes the incorrect Option C. Therefore, A is the best prediction."},
+ {id:"bench_culture", scene:"Culture", type:"contextual", pitch:0.0, fovx:58.52, ar:1.3338, src:"360+x",
+  q:"Which of the following exhibits would be least plausible to find outside of this view?",
+  opts:["Dinosaur footprint casts", "Medieval armor collection", "Butterfly specimen collection", "Prehistoric tool replicas", "None of the above"],
+  ans:1,
+  rationale:"Option B (Medieval armor collection) is least plausible because the visible dinosaur skeleton and natural history theme suggest the museum specializes in prehistoric life, not medieval history. Other options like dinosaur footprint casts, butterfly specimens, and prehistoric tools align well with the museum's apparent focus. Thus, medieval armor would be out of place and unlikely to be found nearby. The confidence in this reasoning is high since the theme is clearly natural history."},
+ {id:"bench_education", scene:"Education", type:"directional", pitch:-59.94, fovx:54.01, ar:1.3333, src:"360Loc",
+  q:"If you turn left about 40\u00b0 and tilt up slightly, what feature would most likely come into view first?",
+  opts:["A series of trees and greenery", "A section of sky with a few scattered clouds", "Additional structural beams and glass panels", "A group of people walking along a pathway", "None of the above"],
+  ans:2,
+  rationale:"The correct answer is C, as the base view shows a glass roof supported by beams, and rotating left and tilting up would likely reveal more of the roof structure. Option A is plausible but unlikely as there are no visible trees in the current view. Option B is possible but less probable since the sky is not immediately suggested by the scene. Option D contradicts the structural focus of the current view. Option E is incorrect as C is a valid prediction."},
+ {id:"bench_heritage", scene:"Heritage", type:"directional", pitch:0.0, fovx:67.75, ar:1.3337, src:"360+x",
+  q:"If you rotate right about 60\u00b0, what feature would most likely come into view?",
+  opts:["A large open space with few people", "Traditional buildings with tiled roofs", "Tall modern skyscrapers", "A dense forested area", "None of the above"],
+  ans:1,
+  rationale:"Option B is correct because the current view shows traditional architecture and a paved square. A 60\u00b0 rotation to the right would likely continue along the line of sight towards similar traditional buildings seen in the periphery of the current view. Options A, C, and D are less plausible as they contradict the visible traditional setting and spatial layout. The answer isn\u2019t E since B is a reasonable prediction."},
+ {id:"bench_hospitality", scene:"Hospitality", type:"contextual", pitch:-10.8, fovx:36.67, ar:1.3333, src:"360-1M",
+  q:"Which of the following sets of objects would most likely appear outside of this view?",
+  opts:["Umbrellas, beach towels, and sun loungers", "More dining tables, chairs, and wall-mounted televisions", "Snowboards, ski poles, and winter jackets", "Laboratory equipment, beakers, and microscopes", "None of the above"],
+  ans:1,
+  rationale:"Option B (more dining tables, chairs, and wall-mounted televisions) is the most plausible extension of the visible dining area. The presence of these items inside the view suggests a continuation of the same setting. Options A (beach items), C (winter sports gear), and D (lab equipment) are unrelated to the dining environment. Option E is incorrect since B is a plausible choice."},
+ {id:"bench_residential", scene:"Residential", type:"contextual", pitch:59.94, fovx:65.12, ar:1.5009, src:"360-1M",
+  q:"Which item would be least plausible to appear outside of this view?",
+  opts:["Refrigerator", "Microwave", "Cutting board and utensils", "Iron and ironing board", "None of the above"],
+  ans:3,
+  rationale:"Option D is least plausible because an iron and ironing board are typically unrelated to immediate kitchen functionality. A refrigerator (Option A), microwave (Option B), and cutting board with utensils (Option C) are common and relevant for a compact kitchen. Option E is incorrect as Option D is clearly less plausible."},
+ {id:"bench_rural", scene:"Rural", type:"contextual", pitch:0.0, fovx:82.15, ar:1.7774, src:"360-1M",
+  q:"Based on the scene, which of the following structures would be most plausible to find nearby?",
+  opts:["Picnic tables and benches", "Swimming pool", "Indoor movie theater", "Amusement park rides", "Both B and C"],
+  ans:0,
+  rationale:"A recreational site like this often includes picnic tables and benches to allow visitors to rest and socialize, fitting with the shaded tent area. Swimming pools, indoor theaters, and amusement rides are less plausible in this outdoor, rural setting. Hence, option A is the most likely answer."},
+ {id:"bench_transport", scene:"Transport", type:"contextual", pitch:0.0, fovx:62.79, ar:1.778, src:"Mapillary",
+  q:"Given the view, which of the following sets of objects would be most plausible to find nearby?",
+  opts:["Helmets, bike lock, and water bottle", "Snowboards, skis, and ski poles", "Swim trunks, surfboard, and flippers", "Office chairs, desks, and computers", "None of the above"],
+  ans:0,
+  rationale:"Option A is correct because a cyclist in an urban setting implies cycling-related gear might be found nearby. Options B, C, and D are less plausible as they pertain to different environments (snow sports, beach, office) unrelated to the urban street scene. Hence, option A logically fits the context."},
+ {id:"bench_workplace", scene:"Workplace", type:"directional", pitch:-59.94, fovx:25.75, ar:0.5623, src:"360-1M",
+  q:"If you tilt upward slightly, which feature is most likely to become immediately visible?",
+  opts:["A large ventilation duct crossing the ceiling.", "An array of sprinkler heads for fire safety.", "Additional wooden beams spanning across the ceiling.", "A complex network of electrical wiring.", "Both A and C."],
+  ans:2,
+  rationale:"Option C is correct, as the visible ceiling already includes beams, implying that more could be present above. Options A, B, and D are plausible but less supported by the direct view, which instead suggests a clean ceiling in an open space. The answer relies on the continuity of visible structural elements."},
+];
+
+const L = ["A","B","C","D","E"];
+let cur = 0;
+const tabs = document.getElementById("quizTabs");
+QUIZ.forEach((q,i)=>{
+  const b = document.createElement("button");
+  b.className = "qtab"; b.textContent = q.scene;
+  b.onclick = ()=>loadQuiz(i);
+  tabs.appendChild(b);
+  if(i===5){ const br=document.createElement("span"); br.className="brk"; tabs.appendChild(br); }   // 6 + 5 两行
+});
+const isMobile = ()=>window.innerWidth <= 760;
+// 背景层机制: wide.jpg 的中央 1/scale 区域与原始裁剪视角逐像素一致。
+// 初始: 背景层 clip-path 裁到左侧槽位矩形, 图片 transform 使中央区域正好落在槽位;
+// 答题后: clip-path 展开到整个舞台(全宽), 图片过渡到铺满, 题目卡原位浮在其上。
+/* ---------------- 极简 WebGL 全景查看器 ---------------- */
+const glv = (()=>{
+  const c = document.getElementById("qzCanvas");
+  const gl = c.getContext("webgl", {antialias:true, preserveDrawingBuffer:true});
+  if(!gl) return null;
+  const vs = "attribute vec2 p;varying vec2 v;void main(){v=p;gl_Position=vec4(p,0.,1.);}";
+  const fs = "precision mediump float;varying vec2 v;uniform float tx,ty,yaw,pit;uniform sampler2D t;"+
+    "void main(){vec3 d=normalize(vec3(v.x*tx,v.y*ty,1.0));"+
+    "float cp=cos(pit),sp=sin(pit);d=vec3(d.x,cp*d.y+sp*d.z,-sp*d.y+cp*d.z);"+
+    "float cy=cos(yaw),sy=sin(yaw);d=vec3(cy*d.x+sy*d.z,d.y,-sy*d.x+cy*d.z);"+
+    "float lon=atan(d.x,d.z);float lat=atan(d.y,length(d.xz));"+
+    "gl_FragColor=texture2D(t,vec2(0.5+lon/6.2831853,0.5-lat/3.14159265));}";
+  const sh=(ty,src)=>{const o=gl.createShader(ty);gl.shaderSource(o,src);gl.compileShader(o);return o;};
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(pr);gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const lp=gl.getAttribLocation(pr,"p");
+  gl.enableVertexAttribArray(lp);gl.vertexAttribPointer(lp,2,gl.FLOAT,false,0,0);
+  const u={tx:gl.getUniformLocation(pr,"tx"),ty:gl.getUniformLocation(pr,"ty"),
+           yaw:gl.getUniformLocation(pr,"yaw"),pit:gl.getUniformLocation(pr,"pit")};
+  let tex=null, ready=false, gen=0;
+  function load(url, cb){
+    ready=false; const my=++gen; const im=new Image();
+    im.onload=()=>{ if(my!==gen) return;
+      if(!tex) tex=gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D,tex);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,im);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      ready=true; cb&&cb();
+    };
+    im.src=url;
+  }
+  function draw(yawDeg,pitDeg,fovxDeg){
+    if(!ready) return;
+    const dpr=Math.min(2,window.devicePixelRatio||1);
+    const W=Math.max(2,Math.round(c.clientWidth*dpr)),H=Math.max(2,Math.round(c.clientHeight*dpr));
+    if(c.width!==W||c.height!==H){c.width=W;c.height=H;}
+    gl.viewport(0,0,W,H);
+    const tx=Math.tan(fovxDeg*Math.PI/360);
+    gl.uniform1f(u.tx,tx);gl.uniform1f(u.ty,tx*H/W);
+    gl.uniform1f(u.yaw,yawDeg*Math.PI/180);gl.uniform1f(u.pit,pitDeg*Math.PI/180);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+  return {load,draw};
+})();
+
+/* ---------------- Quiz 舞台 ---------------- */
+const FOVX_OPEN = 105;   // 答题后展开到的水平 FoV
+const vw = {yaw:0, pit:0, fovx:60, free:false, answered:false, anim:0};
+function stageRects(){
+  const sr=document.getElementById("qzStage").getBoundingClientRect();
+  const vr=document.getElementById("qzSlot").getBoundingClientRect();
+  // 展开终态: 四周留 GAP 边距, 右缘到停靠卡片(距视口右缘 GAP)左侧再留一个 GAP
+  const GAP = 22;
+  const r0 = {x:vr.left-sr.left, y:vr.top-sr.top, w:vr.width, h:vr.height};
+  if(isMobile()){
+    // 手机: 终态就是展开后的槽位 (style 上已是目标尺寸, 包围盒可能还在过渡中)
+    const slot=document.getElementById("qzSlot");
+    const w=parseFloat(slot.style.width), h=parseFloat(slot.style.height);
+    return {r0, r1:{x:(sr.width-w)/2, y:vr.top-sr.top, w, h}};
+  }
+  let w1 = sr.width - GAP*2;
+  if(window.innerWidth > 760){
+    const cr = document.getElementById("qaCard").getBoundingClientRect();
+    w1 = Math.max(vr.width, sr.width - cr.width - GAP*3);
+  }
+  return {r0, r1:{x:GAP, y:GAP*0.8, w:w1, h:sr.height - GAP*1.6}};
+}
+function placeCanvas(r, rad){
+  const c=document.getElementById("qzCanvas");
+  c.style.left=r.x+"px"; c.style.top=r.y+"px";
+  c.style.width=r.w+"px"; c.style.height=r.h+"px";
+  c.style.borderRadius=rad+"px";
+}
+function showCanvas(idx){
+  requestAnimationFrame(()=>{
+    if(idx!==cur) return;
+    const c=document.getElementById("qzCanvas");
+    if(vw.answered){   // 纹理加载完成前已答题: 直接呈现展开终态
+      vw.anim++; placeCanvas(stageRects().r1, 12);
+      vw.fovx=FOVX_OPEN; vw.free=true; c.classList.add("free");
+    } else {
+      placeCanvas(stageRects().r0, 12);
+    }
+    document.getElementById("qzSlot").style.background = "transparent";
+    c.classList.add("on");
+  });
+}
+function openStage(){
+  // 画布从槽位过渡到全舞台, FoV 同步从题目视场展开到 FOVX_OPEN, 结束后开放拖拽
+  const c=document.getElementById("qzCanvas");
+  const {r0,r1}=stageRects();
+  const f0=vw.fovx, myAnim=++vw.anim, t0=performance.now(), DUR=2200;
+  const ease=t=>t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+  function step(now){
+    if(myAnim!==vw.anim) return;
+    const t=Math.min(1,(now-t0)/DUR), e=ease(t);
+    placeCanvas({x:r0.x+(r1.x-r0.x)*e, y:r0.y+(r1.y-r0.y)*e,
+                 w:r0.w+(r1.w-r0.w)*e, h:r0.h+(r1.h-r0.h)*e}, 12);
+    vw.fovx=f0+(FOVX_OPEN-f0)*e;
+    if(t<1) requestAnimationFrame(step);
+    else {
+      vw.free=true; c.classList.add("free");
+    }
+  }
+  requestAnimationFrame(step);
+}
+/* 拖拽与滚轮 */
+(()=>{
+  const c=document.getElementById("qzCanvas");
+  let drag=null;
+  c.addEventListener("pointerdown",e=>{ if(!vw.free) return;
+    drag={x:e.clientX,y:e.clientY}; c.setPointerCapture(e.pointerId); });
+  c.addEventListener("pointermove",e=>{ if(!drag) return;
+    const k=0.12*vw.fovx/90;
+    vw.yaw-=(e.clientX-drag.x)*k;
+    vw.pit=Math.max(-85,Math.min(85,vw.pit+(e.clientY-drag.y)*k));
+    drag={x:e.clientX,y:e.clientY}; });
+  c.addEventListener("pointerup",()=>drag=null);
+  c.addEventListener("pointercancel",()=>drag=null);
+  c.addEventListener("wheel",e=>{ if(!vw.free) return; e.preventDefault();
+    vw.fovx=Math.max(40,Math.min(120,vw.fovx*(1+e.deltaY*0.0012))); },{passive:false});
+  // 双击: 平滑回到原裁剪视角(方向 + 原始 FoV), yaw 走最短路径
+  c.addEventListener("dblclick",()=>{
+    if(!vw.free) return;
+    const q=QUIZ[cur];
+    const y0=vw.yaw, p0=vw.pit, f0=vw.fovx;
+    const yT=y0+((0-y0)%360+540)%360-180, pT=-q.pitch, fT=Math.max(q.fovx,70);
+    const myAnim=++vw.anim, t0=performance.now(), DUR=800;
+    const ease=t=>1-Math.pow(1-t,3);
+    (function step(now){
+      if(myAnim!==vw.anim) return;
+      const t=Math.min(1,((now||performance.now())-t0)/DUR), e=ease(t);
+      vw.yaw=y0+(yT-y0)*e; vw.pit=p0+(pT-p0)*e; vw.fovx=f0+(fT-f0)*e;
+      if(t<1) requestAnimationFrame(step);
+    })(t0);
+  });
+})();
+// 窗口尺寸变化: 已展开的画布跟随新的终态
+window.addEventListener("resize", ()=>{ if(vw.free) placeCanvas(stageRects().r1, 12); });
+/* 渲染循环 */
+(function loop(){ if(glv) glv.draw(vw.yaw,vw.pit,vw.fovx); requestAnimationFrame(loop); })();
+
+function loadQuiz(i){
+  cur = i;
+  const q = QUIZ[i];
+  [...tabs.querySelectorAll(".qtab")].forEach((t,j)=>t.classList.toggle("active", j===i));
+  const hint = document.getElementById("qHint");
+  hint.textContent = "This crop is all the model sees.";
+  hint.style.transition = "none"; hint.style.transform = "";
+  void hint.offsetWidth; hint.style.transition = "";
+  const badge = document.getElementById("qBadge");
+  badge.textContent = (q.type==="contextual"?"Contextual":"Directional")+" · "+q.scene+" scene";
+  badge.className = "qbadge "+q.type;
+  document.getElementById("qText").textContent = q.q;
+  document.getElementById("qVerdict").textContent = "";
+  document.getElementById("qReveal").classList.remove("show");
+  const box = document.getElementById("qOpts");
+  box.innerHTML = "";
+  q.opts.forEach((o,j)=>{
+    const d = document.createElement("div");
+    d.className = "opt";
+    d.innerHTML = `<span class="letter">${L[j]}.</span><span>${o}</span>`;
+    d.onclick = ()=>answer(j,d);
+    box.appendChild(d);
+  });
+  // 槽位尺寸立即布置(决定舞台高度); 左列宽度固定, 避免 hint 文字撑宽挤压题目卡
+  const wrapW = document.querySelector("#quiz .wrap").clientWidth - 44;
+  // 上限同时受"卡片(520) + 列间隙(30)"约束, 避免宽幅槽位挤到题目卡
+  // 窄屏单列布局时槽位只受容器宽度约束
+  const w0 = window.innerWidth <= 760
+    ? Math.round(Math.min(wrapW, 430, 520*q.ar))
+    : Math.round(Math.min(430, wrapW - 550, Math.max(250, wrapW*0.42), 520*q.ar));
+  document.getElementById("qzLeft").style.width = w0 + "px";
+  const slot = document.getElementById("qzSlot");
+  slot.style.transition = document.getElementById("qzLeft").style.transition = "none";
+  slot.style.width = w0 + "px";
+  slot.style.height = Math.round(w0/q.ar) + "px";
+  void slot.offsetWidth;
+  slot.style.transition = document.getElementById("qzLeft").style.transition = "";
+  slot.style.background = "";
+  // 切题: 卡片立即(无动画)回到初始位置
+  const card = document.getElementById("qaCard");
+  card.style.transition = "none";
+  card.classList.remove("docked");
+  void card.offsetWidth;
+  card.style.transition = "";
+  // 重置查看器: 纹理已按视角居中(yaw=0), pitch 取反匹配渲染约定
+  vw.answered = false; vw.free = false; vw.anim++;
+  vw.yaw = 0; vw.pit = -q.pitch; vw.fovx = q.fovx;
+  const c = document.getElementById("qzCanvas");
+  c.classList.remove("on","free");
+  if(glv) glv.load(`assets/quiz/${q.id}/pano_tex.jpg`, ()=>showCanvas(i));
+  else slot.style.background = `url(assets/quiz/${q.id}/view.jpg) center/cover`;
+}
+function answer(j, el){
+  const q = QUIZ[cur];
+  const box = document.getElementById("qOpts");
+  [...box.children].forEach((d,k)=>{
+    d.classList.add(k===q.ans ? "correct" : (k===j ? "wrong" : "dim"));
+    d.classList.add("locked");
+  });
+  const v = document.getElementById("qVerdict");
+  if(j===q.ans){ v.textContent = "✓ Correct"; v.className = "verdict ok"; }
+  else { v.textContent = `✗ Not quite. The answer is ${L[q.ans]}.`; v.className = "verdict no"; }
+  vw.answered = true;
+  document.getElementById("qaCard").classList.add("docked");
+  if(isMobile()){
+    // 槽位先设到目标尺寸(CSS 过渡), openStage 读取它作为画布终态
+    const w = document.getElementById("qzStage").clientWidth - 44;
+    const h = Math.round(Math.min(w*0.8, window.innerHeight*0.6));
+    document.getElementById("qzLeft").style.width = w + "px";
+    const slot = document.getElementById("qzSlot");
+    slot.style.width = w + "px"; slot.style.height = h + "px";
+    document.getElementById("qHint").textContent = "Drag sideways to look around · double-tap to recenter";
+  }
+  openStage();
+  // hint: 先换成最终文字再测量, 统一移动到画面内固定相对位置(水平居中, 下方 10%)
+  if(!isMobile()){
+    const hintEl = document.getElementById("qHint");
+    hintEl.textContent = "Drag to look around · scroll to zoom · double-click to recenter";
+    const sr = document.getElementById("qzStage").getBoundingClientRect();
+    const hr = hintEl.getBoundingClientRect();
+    const {r1} = stageRects();
+    const dx = (r1.x + r1.w/2) - (hr.left - sr.left + hr.width/2);
+    const dy = (r1.y + r1.h*0.9 - hr.height) - (hr.top - sr.top);
+    hintEl.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+  }
+  document.getElementById("qPano").src = `assets/quiz/${q.id}/pano.jpg`;
+  document.getElementById("qSrc").textContent = `Source panorama: ${q.src}.`;
+  document.getElementById("qRat").innerHTML = `<p>${q.rationale}</p>`;
+  document.getElementById("qReveal").classList.add("show");
+}
+loadQuiz(0);
+
+/* ---------------- Compare slider ---------------- */
+const SCENES = [
+  {key:"house", label:"House exterior"},
+  {key:"fireplace", label:"Living room"},
+  {key:"dining", label:"Dining room"}
+];
+const cmp = document.getElementById("cmp");
+const cmpTop = document.getElementById("cmpTop");
+const cmpBar = document.getElementById("cmpBar");
+const cmpKnob = document.getElementById("cmpKnob");
+const cmpTabs = document.getElementById("cmpTabs");
+let pos = .5;
+SCENES.forEach((s,i)=>{
+  const b = document.createElement("button");
+  b.className = "qtab"+(i===0?" active":"");
+  b.textContent = s.label;
+  b.onclick = ()=>{
+    [...cmpTabs.children].forEach((t,j)=>t.classList.toggle("active", j===i));
+    document.getElementById("cmpBase").src = `assets/outpaint/${s.key}_base.jpg`;
+    document.getElementById("cmpFt").src = `assets/outpaint/${s.key}_ft.jpg`;
+    setPos(.5);
+  };
+  cmpTabs.appendChild(b);
+});
+document.getElementById("cmpBase").src = "assets/outpaint/house_base.jpg";
+document.getElementById("cmpFt").src = "assets/outpaint/house_ft.jpg";
+function setPos(p){
+  pos = Math.min(.99, Math.max(.01, p));
+  const w = cmp.clientWidth;
+  cmpTop.style.width = (pos*100)+"%";
+  cmpTop.querySelector("img").style.width = w+"px";
+  cmpBar.style.left = (pos*100)+"%";
+  cmpKnob.style.left = (pos*100)+"%";
+}
+function dragTo(clientX){
+  const r = cmp.getBoundingClientRect();
+  setPos((clientX-r.left)/r.width);
+}
+let dragging = false;
+cmp.addEventListener("pointerdown", e=>{dragging=true; dragTo(e.clientX); cmp.setPointerCapture(e.pointerId);});
+cmp.addEventListener("pointermove", e=>{if(dragging) dragTo(e.clientX);});
+cmp.addEventListener("pointerup", ()=>dragging=false);
+window.addEventListener("resize", ()=>setPos(pos));
+document.getElementById("cmpBase").onload = ()=>setPos(.5);
+
+/* ---------------- BibTeX ---------------- */
+function copyBib(btn){
+  navigator.clipboard.writeText(document.getElementById("bibcode").textContent).then(()=>{
+    btn.textContent = "Copied!"; setTimeout(()=>btn.textContent="Copy", 1500);
+  });
+}
+</script>
+</body>
+</html>
